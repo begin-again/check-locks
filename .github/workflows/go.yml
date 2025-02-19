@@ -1,0 +1,38 @@
+name: Go Build & Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest  # Use the latest stable Windows image
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+        cache: true  # Enable caching for faster builds
+
+    - name: Build check_locks.exe
+      run: go build -o check_locks.exe -v ./...
+
+    - name: Run tests (if any exist)
+      run: |
+        if (Test-Path -Path "./*_test.go") {
+          go test -v ./...
+        } else {
+          echo "No tests found, skipping test step."
+        }
+      shell: pwsh
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: check_locks-windows
+        path: check_locks.exe
