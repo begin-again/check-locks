@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/windows"
 )
 
 // LockInfo struct to store locked files/folders
@@ -17,11 +19,29 @@ type LockInfo struct {
 
 // Check if a file is locked by trying to open it in exclusive mode
 func isFileLocked(filePath string) bool {
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0666)
+	ptr, err := windows.UTF16PtrFromString(filePath)
 	if err != nil {
-		return true // File is locked
+		return true // Assume locked if we can't convert string
 	}
-	file.Close()
+
+	// Try to open the file with no sharing (exclusive lock)
+	handle, err := windows.CreateFile(
+		ptr,
+		windows.GENERIC_READ|windows.GENERIC_WRITE, // Open for read/write
+		0, // No sharing allowed (exclusive lock)
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_ATTRIBUTE_NORMAL,
+		0,
+	)
+
+	// If opening fails, the file is locked
+	if err != nil {
+		return true
+	}
+
+	// If we got a valid handle, close it and return false (not locked)
+	windows.CloseHandle(handle)
 	return false
 }
 
@@ -77,17 +97,18 @@ func getAbsoluteExclusions(rootPath string, excluded []string) []string {
 
 // Print usage instructions
 func printHelp() {
-	fmt.Println(`Usage: check_locks.exe -root <folder> [-exclude <relative_folder1,relative_folder2>]
+	fmt.Println(`
+		Usage: check_locks.exe -root <folder> [-exclude <relative_folder1,relative_folder2>]
 
-Options:
-  -root      Specify the root folder to scan for locks.
-  -exclude   Comma-separated list of subfolders to exclude (relative to root).
-  -help      Display this help message.
+		Options:
+		-root      Specify the root folder to scan for locks.
+		-exclude   Comma-separated list of subfolders to exclude (relative to root).
+		-help      Display this help message.
 
-Examples:
-  check_locks.exe -root "D:\projects\infoscanjs"
-  check_locks.exe -root "D:\projects\infoscanjs" -exclude "logs,temp"
-`)
+		Examples:
+		check_locks.exe -root "D:\projects\infoscanjs"
+		check_locks.exe -root "D:\projects\infoscanjs" -exclude "logs,temp"
+		`)
 	os.Exit(0)
 }
 
@@ -114,7 +135,7 @@ func checkLocks(rootPath string, excludedPaths []string) {
 		}
 
 		// Check if the file is locked
-		if !info.IsDir() && isFileLocked(path)) {
+		if !info.IsDir() && isFileLocked(path) {
 			result := LockInfo{LockedFiles: []string{path}, LockedFolders: []string{}}
 			jsonOutput, _ := json.MarshalIndent(result, "", "  ")
 			fmt.Println(string(jsonOutput))
@@ -134,11 +155,14 @@ func checkLocks(rootPath string, excludedPaths []string) {
 	os.Exit(0)
 }
 
+var version = "dev"
+
 func main() {
 	// Define command-line arguments
 	rootFolder := flag.String("root", "", "Root folder to scan")
 	excludeList := flag.String("exclude", "", "Comma-separated list of relative folders to exclude")
 	helpFlag := flag.Bool("help", false, "Display help information")
+	versionFlag := flag.Bool("version", false, "Print the version of the program")
 
 	// Parse command-line arguments
 	flag.Parse()
@@ -146,6 +170,11 @@ func main() {
 	// Show help if -help is used
 	if *helpFlag {
 		printHelp()
+	}
+
+	if *versionFlag {
+		fmt.Println("check_locks version:", version)
+		return
 	}
 
 	// Validate required arguments
