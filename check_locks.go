@@ -155,11 +155,14 @@ func checkLocks(rootPath string, excludedPaths []string) {
 	os.Exit(0)
 }
 
+var version = "dev"
+
 func main() {
 	// Define command-line arguments
 	rootFolder := flag.String("root", "", "Root folder to scan")
 	excludeList := flag.String("exclude", "", "Comma-separated list of relative folders to exclude")
 	helpFlag := flag.Bool("help", false, "Display help information")
+	versionFlag := flag.Bool("version", false, "Print the version of the program")
 
 	// Parse command-line arguments
 	flag.Parse()
@@ -167,6 +170,11 @@ func main() {
 	// Show help if -help is used
 	if *helpFlag {
 		printHelp()
+	}
+
+	if *versionFlag {
+		fmt.Println("check_locks version:", version)
+		return
 	}
 
 	// Validate required arguments
