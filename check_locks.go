@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/windows"
 )
 
 // LockInfo struct to store locked files/folders
@@ -15,13 +17,39 @@ type LockInfo struct {
 	LockedFolders []string `json:"locked_folders"`
 }
 
+type Config struct {
+	Root    string
+	Exclude []string
+}
+
+var exitFunc = os.Exit
+var version = "dev"
+
 // Check if a file is locked by trying to open it in exclusive mode
 func isFileLocked(filePath string) bool {
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0666)
+	ptr, err := windows.UTF16PtrFromString(filePath)
 	if err != nil {
-		return true // File is locked
+		return true // Assume locked if we can't convert string
 	}
-	file.Close()
+
+	// Try to open the file with no sharing (exclusive lock)
+	handle, err := windows.CreateFile(
+		ptr,
+		windows.GENERIC_READ|windows.GENERIC_WRITE, // Open for read/write
+		0, // No sharing allowed (exclusive lock)
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_ATTRIBUTE_NORMAL,
+		0,
+	)
+
+	// If opening fails, the file is locked
+	if err != nil {
+		return true
+	}
+
+	// If we got a valid handle, close it and return false (not locked)
+	windows.CloseHandle(handle)
 	return false
 }
 
@@ -77,22 +105,25 @@ func getAbsoluteExclusions(rootPath string, excluded []string) []string {
 
 // Print usage instructions
 func printHelp() {
-	fmt.Println(`Usage: check_locks.exe -root <folder> [-exclude <relative_folder1,relative_folder2>]
+	fmt.Println(`
+        Usage: check_locks.exe -root <folder> [-exclude <relative_folder1,relative_folder2>]
 
-Options:
-  -root      Specify the root folder to scan for locks.
-  -exclude   Comma-separated list of subfolders to exclude (relative to root).
-  -help      Display this help message.
+        Options:
+        -root      Specify the root folder to scan for locks.
+        -exclude   Comma-separated list of subfolders to exclude (relative to root).
+        -help      Display this help message.
 
-Examples:
-  check_locks.exe -root "D:\projects\infoscanjs"
-  check_locks.exe -root "D:\projects\infoscanjs" -exclude "logs,temp"
-`)
-	os.Exit(0)
+        Examples:
+        check_locks.exe -root "D:\projects\infoscanjs"
+        check_locks.exe -root "D:\projects\infoscanjs" -exclude "logs,temp"
+        `)
+	exitFunc(0)
 }
 
-// Walk through the directory and exit immediately if a lock is found
-func checkLocks(rootPath string, excludedPaths []string) {
+// checkLocks walks the directory tree starting at rootPath, skipping excluded paths.
+// Returns a JSON string and an exit code (1 if a lock is found, 0 otherwise).
+func checkLocks(rootPath string, excludedPaths []string) (string, int) {
+	var output string
 	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -109,29 +140,35 @@ func checkLocks(rootPath string, excludedPaths []string) {
 		if info.IsDir() && isFolderLocked(path) {
 			result := LockInfo{LockedFiles: []string{}, LockedFolders: []string{path}}
 			jsonOutput, _ := json.MarshalIndent(result, "", "  ")
-			fmt.Println(string(jsonOutput))
-			os.Exit(1) // Exit immediately on first locked folder
+			output = string(jsonOutput)
+			// Return an error to break out of Walk.
+			return fmt.Errorf("lock found")
 		}
 
 		// Check if the file is locked
-		if !info.IsDir() && isFileLocked(path)) {
+		if !info.IsDir() && isFileLocked(path) {
 			result := LockInfo{LockedFiles: []string{path}, LockedFolders: []string{}}
 			jsonOutput, _ := json.MarshalIndent(result, "", "  ")
-			fmt.Println(string(jsonOutput))
-			os.Exit(1) // Exit immediately on first locked file
+			output = string(jsonOutput)
+			return fmt.Errorf("lock found")
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		fmt.Println(`{"error": "Error walking the path"}`)
-		os.Exit(1)
+		return output, 1
 	}
 
 	// If no locks were found, return an empty result
-	fmt.Println(`{"locked_files": [], "locked_folders": []}`)
-	os.Exit(0)
+	return `{"locked_files": [], "locked_folders": []}`, 0
+}
+
+func run(cfg Config) (string, int) {
+	// Convert relative exclude paths to absolute paths
+	excludedPaths := getAbsoluteExclusions(cfg.Root, cfg.Exclude)
+
+	return checkLocks(cfg.Root, excludedPaths)
 }
 
 func main() {
@@ -139,6 +176,7 @@ func main() {
 	rootFolder := flag.String("root", "", "Root folder to scan")
 	excludeList := flag.String("exclude", "", "Comma-separated list of relative folders to exclude")
 	helpFlag := flag.Bool("help", false, "Display help information")
+	versionFlag := flag.Bool("version", false, "Print the version of the program")
 
 	// Parse command-line arguments
 	flag.Parse()
@@ -148,11 +186,16 @@ func main() {
 		printHelp()
 	}
 
+	if *versionFlag {
+		fmt.Println("check_locks version:", version)
+		return
+	}
+
 	// Validate required arguments
 	if *rootFolder == "" {
 		fmt.Println(`Error: You must specify a root folder using -root`)
 		printHelp()
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	// Convert relative exclude paths to absolute paths
@@ -165,6 +208,12 @@ func main() {
 		excludedPaths = getAbsoluteExclusions(*rootFolder, relativeExcludes)
 	}
 
-	// Check for locked files and folders (exit immediately on first lock)
-	checkLocks(*rootFolder, excludedPaths)
+	// Create a config instance and run the main logic.
+	cfg := Config{
+		Root:    *rootFolder,
+		Exclude: excludedPaths,
+	}
+	output, exitCode := run(cfg)
+	fmt.Println(output)
+	exitFunc(exitCode)
 }
