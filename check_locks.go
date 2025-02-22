@@ -171,6 +171,8 @@ func run(cfg Config) (string, int) {
 	return checkLocks(cfg.Root, excludedPaths)
 }
 
+var version = "dev"
+
 func main() {
 	// Define command-line arguments
 	rootFolder := flag.String("root", "", "Root folder to scan")

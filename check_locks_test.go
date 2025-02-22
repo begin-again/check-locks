@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package main
 
 import (
@@ -170,6 +167,7 @@ func TestCheckLocks_FileLocked(t *testing.T) {
 		windows.FILE_ATTRIBUTE_NORMAL,
 		0,
 	)
+
 	if err != nil {
 		t.Fatal(err)
 	}

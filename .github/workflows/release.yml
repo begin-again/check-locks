@@ -1,0 +1,110 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main  # Runs when code is pushed or merged into main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # STEP 1: Determine the latest tag
+      - name: Get Latest Tag
+        id: get_latest_tag
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "TAG=$latest_tag" >> $GITHUB_ENV
+          echo "Latest tag: $latest_tag"
+
+      # STEP 2: Determine version bump type based on commit message
+      - name: Determine Version Bump
+        id: bump_version
+        run: |
+          commit_msg=$(git log -1 --pretty=%B)
+          echo "Commit message: $commit_msg"
+
+          if echo "$commit_msg" | grep -qEi "BREAKING CHANGE|major:"; then
+            echo "BUMP_TYPE=major" >> $GITHUB_ENV
+          elif echo "$commit_msg" | grep -qi "feat:"; then
+            echo "BUMP_TYPE=minor" >> $GITHUB_ENV
+          else
+            echo "BUMP_TYPE=patch" >> $GITHUB_ENV
+          fi
+
+      # STEP 3: Calculate the next version and store it in NEW_TAG output
+      - name: Calculate Next Version
+        id: calculate_version
+        shell: bash
+        run: |
+          latest=${TAG}
+          bump_type=${BUMP_TYPE}
+          echo "Latest tag: $latest"
+          echo "Bump type: $bump_type"
+
+          # Extract version parts from the latest tag
+          major=$(echo "$latest" | cut -d. -f1 | sed 's/v//')
+          minor=$(echo "$latest" | cut -d. -f2)
+          patch=$(echo "$latest" | cut -d. -f3)
+
+          # Increment version based on bump type
+          if [[ "$bump_type" == "major" ]]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [[ "$bump_type" == "minor" ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          new_version="v${major}.${minor}.${patch}"
+
+          # Append the new version to $GITHUB_OUTPUT
+          echo "NEW_TAG=$new_version" >> $GITHUB_OUTPUT
+
+          echo "Calculated NEW_TAG: $new_version"
+
+      # STEP 4: Create a new tag using the NEW_TAG from the previous step
+      - name: Create and Push Tag
+        shell: bash
+        run: |
+          git tag "${{ steps.calculate_version.outputs.NEW_TAG }}"
+          git push origin "${{ steps.calculate_version.outputs.NEW_TAG }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # STEP 5: Generate a basic changelog (optional, just as an example)
+      - name: Generate Changelog
+        id: changelog
+        shell: bash
+        run: |
+          echo "## Release ${{ steps.calculate_version.outputs.NEW_TAG }}" > release_notes.md
+          echo "" >> release_notes.md
+          git log --pretty=format:"- %s" $TAG..HEAD >> release_notes.md
+          echo "" >> release_notes.md
+          echo "View [full changelog](https://github.com/${{ github.repository }}/compare/$TAG...${{ steps.calculate_version.outputs.NEW_TAG }})" >> release_notes.md
+
+      # STEP 6: Create a GitHub Release using the new tag
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.calculate_version.outputs.NEW_TAG }}
+          name: Release ${{ steps.calculate_version.outputs.NEW_TAG }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Display New Release
+        shell: bash
+        run: |
+          echo "Released version: ${{ steps.calculate_version.outputs.NEW_TAG }}"
