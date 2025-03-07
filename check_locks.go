@@ -106,18 +106,18 @@ func getAbsoluteExclusions(rootPath string, excluded []string) []string {
 // Print usage instructions
 func printHelp() {
 	fmt.Println(`
-        Usage: check_locks.exe -root <folder> [-exclude <relative_folder1,relative_folder2>]
+		Usage: check_locks.exe -root <folder> [-exclude <relative_folder1,relative_folder2>]
 
-        Options:
-        -root      Specify the root folder to scan for locks.
-        -exclude   Comma-separated list of subfolders to exclude (relative to root).
-        -help      Display this help message.
+		Options:
+		-root      Specify the root folder to scan for locks.
+		-exclude   Comma-separated list of subfolders to exclude (relative to root).
+		-help      Display this help message.
 
-        Examples:
-        check_locks.exe -root "D:\projects\infoscanjs"
-        check_locks.exe -root "D:\projects\infoscanjs" -exclude "logs,temp"
-        `)
-	exitFunc(0)
+		Examples:
+		check_locks.exe -root "D:\projects\infoscanjs"
+		check_locks.exe -root "D:\projects\infoscanjs" -exclude "logs,temp"
+		`)
+	os.Exit(0)
 }
 
 // checkLocks walks the directory tree starting at rootPath, skipping excluded paths.
@@ -170,6 +170,8 @@ func run(cfg Config) (string, int) {
 
 	return checkLocks(cfg.Root, excludedPaths)
 }
+
+var version = "dev"
 
 func main() {
 	// Define command-line arguments

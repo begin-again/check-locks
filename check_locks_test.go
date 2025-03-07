@@ -1,3 +1,4 @@
+
 //go:build windows
 // +build windows
 
@@ -165,6 +166,7 @@ func TestCheckLocks_FileLocked(t *testing.T) {
 		ptr,
 		windows.GENERIC_READ|windows.GENERIC_WRITE,
 		0, // no sharing
+
 		nil,
 		windows.OPEN_EXISTING,
 		windows.FILE_ATTRIBUTE_NORMAL,
