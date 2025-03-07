@@ -14,7 +14,7 @@
 
 ## Features
 
-✔ **Detects locked files and folders**  go help 
+✔ **Detects locked files and folders**
 ✔ **Exits immediately upon detecting the first lock**  
 ✔ **Excludes specific subfolders from scanning**  
 ✔ **Command-line interface (CLI) with `-help` option**  
